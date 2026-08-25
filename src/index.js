@@ -8,126 +8,195 @@ const CORS_HEADERS = {
   "Cache-Control": "no-store"
 };
 
+function corsHeaders(extra = {}) {
+  return {
+    ...CORS_HEADERS,
+    ...extra
+  };
+}
+
+function absoluteURL(value, base) {
+  try {
+    return new URL(value, base).href;
+  } catch {
+    return value;
+  }
+}
+
 export default {
   async fetch(request) {
 
-    // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
-        headers: CORS_HEADERS
+        headers: corsHeaders()
       });
     }
 
-    // Hanya GET dan HEAD
-    if (
-      request.method !== "GET" &&
-      request.method !== "HEAD"
-    ) {
+    if (!["GET", "HEAD"].includes(request.method)) {
       return new Response("Method Not Allowed", {
         status: 405,
-        headers: CORS_HEADERS
+        headers: corsHeaders()
       });
     }
 
-    const incomingURL = new URL(request.url);
-
-    /*
-     * Contoh:
-     *
-     * Worker:
-     * /live/phaohoa5/index.m3u8
-     *
-     * menjadi:
-     * https://luong.phaohoa.live/live/phaohoa5/index.m3u8
-     */
+    const requestURL = new URL(request.url);
 
     const targetURL =
       ORIGIN +
-      incomingURL.pathname +
-      incomingURL.search;
+      requestURL.pathname +
+      requestURL.search;
 
     try {
 
       const response = await fetch(targetURL, {
         method: request.method,
-
         redirect: "follow",
-
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-
+          "User-Agent": "Mozilla/5.0",
           "Accept": "*/*",
-
-          "Referer":
-            "https://luong.phaohoa.live/"
+          "Referer": ORIGIN + "/"
         },
-
         cf: {
           cacheTtl: 0,
           cacheEverything: false
         }
       });
 
-      const headers =
-        new Headers(response.headers);
-
-      // Tambahkan CORS
-      for (
-        const [key, value]
-        of Object.entries(CORS_HEADERS)
-      ) {
-        headers.set(key, value);
-      }
-
-      // Jangan cache live
-      headers.set(
-        "Cache-Control",
-        "no-store, no-cache, must-revalidate"
-      );
-
       /*
-       * Pastikan playlist M3U8
-       * memiliki MIME type yang benar.
+       * Kalau bukan M3U8, langsung teruskan.
        */
+      const contentType =
+        response.headers.get("content-type") || "";
 
-      if (
-        incomingURL.pathname
+      const isM3U8 =
+        requestURL.pathname
           .toLowerCase()
-          .endsWith(".m3u8")
-      ) {
+          .endsWith(".m3u8") ||
+        contentType.includes("mpegurl") ||
+        contentType.includes("m3u8");
 
-        headers.set(
-          "Content-Type",
-          "application/vnd.apple.mpegurl"
+      if (!isM3U8) {
+
+        return new Response(
+          response.body,
+          {
+            status: response.status,
+            statusText: response.statusText,
+            headers: corsHeaders({
+              "Content-Type":
+                contentType || "application/octet-stream"
+            })
+          }
         );
 
       }
 
+      /*
+       * Baca playlist
+       */
+      const text = await response.text();
+
+      /*
+       * URL Worker
+       */
+      const workerOrigin =
+        requestURL.origin;
+
+      /*
+       * Tulis ulang URL segmen/sub-playlist
+       */
+      const lines = text.split(/\r?\n/);
+
+      const rewritten = lines.map(line => {
+
+        const trimmed = line.trim();
+
+        /*
+         * Komentar HLS
+         */
+        if (
+          !trimmed ||
+          trimmed.startsWith("#")
+        ) {
+
+          /*
+           * Beberapa tag HLS dapat berisi URI="..."
+           */
+          if (
+            trimmed.includes('URI="')
+          ) {
+
+            return trimmed.replace(
+              /URI="([^"]+)"/g,
+              (match, uri) => {
+
+                const absolute =
+                  absoluteURL(
+                    uri,
+                    targetURL
+                  );
+
+                return `URI="${workerOrigin}${new URL(absolute).pathname}${new URL(absolute).search}"`;
+              }
+            );
+
+          }
+
+          return line;
+        }
+
+        /*
+         * Baris URL segmen / playlist
+         */
+        try {
+
+          const absolute =
+            absoluteURL(
+              trimmed,
+              targetURL
+            );
+
+          const parsed =
+            new URL(absolute);
+
+          return (
+            workerOrigin +
+            parsed.pathname +
+            parsed.search
+          );
+
+        } catch {
+
+          return line;
+
+        }
+
+      }).join("\n");
+
       return new Response(
-        response.body,
+        request.method === "HEAD"
+          ? null
+          : rewritten,
         {
           status: response.status,
-          statusText: response.statusText,
-          headers: headers
+          headers: corsHeaders({
+            "Content-Type":
+              "application/vnd.apple.mpegurl"
+          })
         }
       );
 
     } catch (error) {
 
       return new Response(
-        "Proxy Error: " +
-        error.message,
+        "Proxy Error: " + error.message,
         {
           status: 502,
-
-          headers: {
-            ...CORS_HEADERS,
-
+          headers: corsHeaders({
             "Content-Type":
               "text/plain; charset=utf-8"
-          }
+          })
         }
       );
 
