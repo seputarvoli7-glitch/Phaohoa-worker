@@ -1,38 +1,57 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>LIVE STREAM</title>
+<meta charset="UTF-8">
 
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0">
 
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-    }
+<title>LIVE STREAM</title>
 
-    video {
-      width: 100%;
-      height: auto;
-      display: block;
-      background: #000;
-    }
+<script
+  src="https://cdn.jsdelivr.net/npm/hls.js@latest">
+</script>
 
-    #status {
-      color: white;
-      background: #111;
-      padding: 10px;
-      text-align: center;
-      font-family: Arial, sans-serif;
-    }
-  </style>
+<style>
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #000;
+}
+
+.video-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: auto;
+}
+
+video {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: #000;
+}
+
+#status {
+  color: white;
+  background: #111;
+  padding: 10px;
+  text-align: center;
+  font-family: Arial, sans-serif;
+}
+
+</style>
+
 </head>
 
 <body>
+
+<div class="video-container">
 
   <video
     id="video"
@@ -46,65 +65,186 @@
     Menghubungkan ke LIVE...
   </div>
 
-  <script>
-
-    const video =
-      document.getElementById("video");
-
-    const status =
-      document.getElementById("status");
-
-    const STREAM =
-      "https://phaohoa-worker.seputarvoli7.workers.dev/live/phaohoa5/index.m3u8";
+</div>
 
 
-    if (Hls.isSupported()) {
+<script>
 
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
+const video =
+  document.getElementById("video");
 
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 6,
-
-        maxBufferLength: 10,
-        backBufferLength: 5
-      });
-
-      hls.loadSource(STREAM);
-
-      hls.attachMedia(video);
+const status =
+  document.getElementById("status");
 
 
-      hls.on(
-        Hls.Events.MANIFEST_PARSED,
-        function () {
+const STREAM =
+  "https://phaohoa-worker.seputarvoli7.workers.dev/live/rumble.m3u8";
 
-          status.textContent =
-            "🔴 LIVE TERHUBUNG";
 
-          video.play().catch(function () {
+function setStatus(text) {
 
-            status.textContent =
-              "LIVE siap. Tekan PLAY.";
+  status.textContent = text;
 
-          });
+}
 
-        }
+
+if (Hls.isSupported()) {
+
+  const hls =
+    new Hls({
+
+      enableWorker: true,
+
+      lowLatencyMode: true,
+
+      liveSyncDurationCount: 3,
+
+      liveMaxLatencyDurationCount: 6,
+
+      maxBufferLength: 15,
+
+      backBufferLength: 5,
+
+      manifestLoadingMaxRetry: 10,
+
+      levelLoadingMaxRetry: 10,
+
+      fragLoadingMaxRetry: 10
+
+    });
+
+
+  hls.loadSource(STREAM);
+
+  hls.attachMedia(video);
+
+
+  hls.on(
+    Hls.Events.MANIFEST_PARSED,
+    function () {
+
+      setStatus(
+        "🔴 LIVE TERHUBUNG"
+      );
+
+      video
+        .play()
+        .catch(function () {
+
+          setStatus(
+            "LIVE siap — tekan PLAY"
+          );
+
+        });
+
+    }
+  );
+
+
+  hls.on(
+    Hls.Events.ERROR,
+    function (
+      event,
+      data
+    ) {
+
+      console.log(
+        "HLS ERROR:",
+        data
       );
 
 
-      hls.on(
-        Hls.Events.ERROR,
-        function (event, data) {
+      if (!data.fatal) {
+        return;
+      }
 
-          console.log(
-            "HLS ERROR:",
-            data
+
+      if (
+        data.type ===
+        Hls.ErrorTypes.NETWORK_ERROR
+      ) {
+
+        setStatus(
+          "Menghubungkan kembali..."
+        );
+
+        hls.startLoad();
+
+      }
+
+      else if (
+        data.type ===
+        Hls.ErrorTypes.MEDIA_ERROR
+      ) {
+
+        setStatus(
+          "Memulihkan video..."
+        );
+
+        hls.recoverMediaError();
+
+      }
+
+      else {
+
+        setStatus(
+          "Stream gagal diputar"
+        );
+
+      }
+
+    }
+  );
+
+
+}
+
+else if (
+  video.canPlayType(
+    "application/vnd.apple.mpegurl"
+  )
+) {
+
+  video.src = STREAM;
+
+
+  video.addEventListener(
+    "loadedmetadata",
+    function () {
+
+      setStatus(
+        "🔴 LIVE TERHUBUNG"
+      );
+
+      video
+        .play()
+        .catch(function () {
+
+          setStatus(
+            "LIVE siap — tekan PLAY"
           );
 
-          if (data.fatal) {
+        });
 
+    }
+  );
+
+
+}
+
+else {
+
+  setStatus(
+    "Browser tidak mendukung HLS"
+  );
+
+}
+
+</script>
+
+</body>
+
+</html>
             status.textContent =
               "Gagal memuat LIVE.";
 
