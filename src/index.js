@@ -1,6 +1,6 @@
-const ORIGIN = "https://luong.phaohoa.live";
+const RUMBLE_HOST = "https://rumble.com";
 
-const CORS_HEADERS = {
+const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "*",
@@ -8,162 +8,252 @@ const CORS_HEADERS = {
   "Cache-Control": "no-store"
 };
 
-function corsHeaders(extra = {}) {
-  return {
-    ...CORS_HEADERS,
-    ...extra
-  };
+function headers(extra = {}) {
+  const h = new Headers(CORS);
+
+  for (const [key, value] of Object.entries(extra)) {
+    h.set(key, value);
+  }
+
+  return h;
 }
 
-function absoluteURL(value, base) {
-  try {
-    return new URL(value, base).href;
-  } catch {
-    return value;
-  }
+function makeProxyURL(workerOrigin, url) {
+  const u = new URL(url);
+
+  return (
+    workerOrigin +
+    "/proxy?url=" +
+    encodeURIComponent(u.href)
+  );
 }
 
 export default {
   async fetch(request) {
 
+    const url = new URL(request.url);
+
+    // CORS
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
-        headers: corsHeaders()
+        headers: headers()
       });
     }
 
-    if (!["GET", "HEAD"].includes(request.method)) {
+    if (
+      request.method !== "GET" &&
+      request.method !== "HEAD"
+    ) {
       return new Response("Method Not Allowed", {
         status: 405,
-        headers: corsHeaders()
+        headers: headers()
       });
     }
 
-    const requestURL = new URL(request.url);
+    /*
+     * URL playlist utama:
+     *
+     * /live/rumble.m3u8
+     */
 
-    const targetURL =
-      ORIGIN +
-      requestURL.pathname +
-      requestURL.search;
+    if (
+      url.pathname === "/live/rumble.m3u8"
+    ) {
 
-    try {
+      const source =
+        "https://rumble.com/live-hls-dvr/9eS2GvvIz54/playlist.m3u8";
 
-      const response = await fetch(targetURL, {
+      return proxyHLS(
+        request,
+        source,
+        url.origin
+      );
+    }
+
+    /*
+     * Semua request /proxy?url=...
+     * digunakan untuk segmen HLS.
+     */
+
+    if (url.pathname === "/proxy") {
+
+      const target =
+        url.searchParams.get("url");
+
+      if (!target) {
+        return new Response(
+          "Missing url",
+          {
+            status: 400,
+            headers: headers()
+          }
+        );
+      }
+
+      return proxyResource(
+        request,
+        target
+      );
+    }
+
+    return new Response(
+      "Rumble HLS Worker aktif",
+      {
+        status: 200,
+        headers: headers({
+          "Content-Type":
+            "text/plain; charset=utf-8"
+        })
+      }
+    );
+  }
+};
+
+
+/*
+ * Proxy playlist M3U8
+ */
+
+async function proxyHLS(
+  request,
+  source,
+  workerOrigin
+) {
+
+  try {
+
+    const response = await fetch(
+      source,
+      {
         method: request.method,
-        redirect: "follow",
+
         headers: {
-          "User-Agent": "Mozilla/5.0",
-          "Accept": "*/*",
-          "Referer": ORIGIN + "/"
+          "User-Agent":
+            "Mozilla/5.0",
+          "Accept":
+            "application/vnd.apple.mpegurl,*/*",
+          "Referer":
+            "https://rumble.com/"
         },
+
+        redirect: "follow",
+
         cf: {
           cacheTtl: 0,
           cacheEverything: false
         }
+      }
+    );
+
+    if (!response.ok) {
+
+      return new Response(
+        "Rumble playlist error: " +
+        response.status,
+        {
+          status: response.status,
+          headers: headers()
+        }
+      );
+
+    }
+
+    if (request.method === "HEAD") {
+
+      return new Response(null, {
+        status: response.status,
+        headers: headers({
+          "Content-Type":
+            "application/vnd.apple.mpegurl"
+        })
       });
 
-      /*
-       * Kalau bukan M3U8, langsung teruskan.
-       */
-      const contentType =
-        response.headers.get("content-type") || "";
+    }
 
-      const isM3U8 =
-        requestURL.pathname
-          .toLowerCase()
-          .endsWith(".m3u8") ||
-        contentType.includes("mpegurl") ||
-        contentType.includes("m3u8");
+    const text =
+      await response.text();
 
-      if (!isM3U8) {
+    const base =
+      new URL(source);
 
-        return new Response(
-          response.body,
-          {
-            status: response.status,
-            statusText: response.statusText,
-            headers: corsHeaders({
-              "Content-Type":
-                contentType || "application/octet-stream"
-            })
-          }
-        );
+    const lines =
+      text.split(/\r?\n/);
 
-      }
+    const output =
+      lines.map(line => {
 
-      /*
-       * Baca playlist
-       */
-      const text = await response.text();
-
-      /*
-       * URL Worker
-       */
-      const workerOrigin =
-        requestURL.origin;
-
-      /*
-       * Tulis ulang URL segmen/sub-playlist
-       */
-      const lines = text.split(/\r?\n/);
-
-      const rewritten = lines.map(line => {
-
-        const trimmed = line.trim();
+        const value =
+          line.trim();
 
         /*
-         * Komentar HLS
+         * Baris kosong
          */
-        if (
-          !trimmed ||
-          trimmed.startsWith("#")
-        ) {
+
+        if (!value) {
+          return line;
+        }
+
+        /*
+         * Tag HLS
+         */
+
+        if (value.startsWith("#")) {
 
           /*
-           * Beberapa tag HLS dapat berisi URI="..."
+           * URI="..."
            */
-          if (
-            trimmed.includes('URI="')
-          ) {
 
-            return trimmed.replace(
+          if (value.includes('URI="')) {
+
+            return value.replace(
               /URI="([^"]+)"/g,
               (match, uri) => {
 
-                const absolute =
-                  absoluteURL(
-                    uri,
-                    targetURL
+                try {
+
+                  const absolute =
+                    new URL(
+                      uri,
+                      base
+                    );
+
+                  return (
+                    'URI="' +
+                    makeProxyURL(
+                      workerOrigin,
+                      absolute.href
+                    ) +
+                    '"'
                   );
 
-                return `URI="${workerOrigin}${new URL(absolute).pathname}${new URL(absolute).search}"`;
+                } catch {
+
+                  return match;
+
+                }
               }
             );
-
           }
 
           return line;
         }
 
         /*
-         * Baris URL segmen / playlist
+         * URL segment / sub-playlist
          */
+
         try {
 
           const absolute =
-            absoluteURL(
-              trimmed,
-              targetURL
+            new URL(
+              value,
+              base
             );
 
-          const parsed =
-            new URL(absolute);
-
-          return (
-            workerOrigin +
-            parsed.pathname +
-            parsed.search
+          return makeProxyURL(
+            workerOrigin,
+            absolute.href
           );
 
         } catch {
@@ -174,33 +264,112 @@ export default {
 
       }).join("\n");
 
-      return new Response(
-        request.method === "HEAD"
-          ? null
-          : rewritten,
-        {
-          status: response.status,
-          headers: corsHeaders({
-            "Content-Type":
-              "application/vnd.apple.mpegurl"
-          })
-        }
-      );
+    return new Response(
+      output,
+      {
+        status: response.status,
 
-    } catch (error) {
+        headers: headers({
+          "Content-Type":
+            "application/vnd.apple.mpegurl"
+        })
+      }
+    );
 
-      return new Response(
-        "Proxy Error: " + error.message,
-        {
-          status: 502,
-          headers: corsHeaders({
-            "Content-Type":
-              "text/plain; charset=utf-8"
-          })
-        }
-      );
+  } catch (error) {
 
-    }
+    return new Response(
+      "HLS Error: " +
+      error.message,
+      {
+        status: 502,
+        headers: headers()
+      }
+    );
 
   }
-};
+}
+
+
+/*
+ * Proxy segment .ts / .m4s / key / playlist lain
+ */
+
+async function proxyResource(
+  request,
+  target
+) {
+
+  try {
+
+    const response =
+      await fetch(
+        target,
+        {
+          method: request.method,
+
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0",
+            "Accept":
+              "*/*",
+            "Referer":
+              "https://rumble.com/"
+          },
+
+          redirect: "follow",
+
+          cf: {
+            cacheTtl: 0,
+            cacheEverything: false
+          }
+        }
+      );
+
+    const responseHeaders =
+      new Headers(response.headers);
+
+    responseHeaders.set(
+      "Access-Control-Allow-Origin",
+      "*"
+    );
+
+    responseHeaders.set(
+      "Access-Control-Allow-Methods",
+      "GET, HEAD, OPTIONS"
+    );
+
+    responseHeaders.set(
+      "Access-Control-Allow-Headers",
+      "*"
+    );
+
+    responseHeaders.set(
+      "Cache-Control",
+      "no-store"
+    );
+
+    return new Response(
+      response.body,
+      {
+        status: response.status,
+        statusText:
+          response.statusText,
+        headers:
+          responseHeaders
+      }
+    );
+
+  } catch (error) {
+
+    return new Response(
+      "Segment Error: " +
+      error.message,
+      {
+        status: 502,
+        headers: headers()
+      }
+    );
+
+  }
+}
