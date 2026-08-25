@@ -1,33 +1,17 @@
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
-
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1.0">
+<title>LIVE DASH</title>
 
-<title>LIVE STREAM</title>
-
-<script
-  src="https://cdn.jsdelivr.net/npm/hls.js@latest">
-</script>
+<script src="https://cdn.dashjs.org/latest/modern/umd/dash.all.min.js"></script>
 
 <style>
-
-html,
 body {
   margin: 0;
-  padding: 0;
   background: #000;
-}
-
-.video-container {
-  width: 100%;
-  max-width: 1200px;
-  margin: auto;
 }
 
 video {
@@ -44,67 +28,79 @@ video {
   text-align: center;
   font-family: Arial, sans-serif;
 }
-
 </style>
-
 </head>
 
 <body>
 
-<div class="video-container">
+<video
+  id="video"
+  controls
+  autoplay
+  muted
+  playsinline>
+</video>
 
-  <video
-    id="video"
-    controls
-    autoplay
-    muted
-    playsinline>
-  </video>
-
-  <div id="status">
-    Menghubungkan ke LIVE...
-  </div>
-
+<div id="status">
+Menghubungkan ke LIVE...
 </div>
-
 
 <script>
 
+const STREAM =
+"https://gvisiontv.channell.my.id/ch/th/th1.php/.mpd?=29";
+
 const video =
-  document.getElementById("video");
+document.getElementById("video");
 
 const status =
-  document.getElementById("status");
+document.getElementById("status");
 
+const player =
+dashjs.MediaPlayer().create();
 
-const STREAM =
-"https://hugh.cdn.rumble.cloud/live/4gf18j5s/live-hls/iii2-2yzx/chunklist_i0_DVR.m3u8";
-function setStatus(text) {
+player.initialize(
+  video,
+  STREAM,
+  true
+);
 
-  status.textContent = text;
+player.on(
+  dashjs.MediaPlayer.events.STREAM_INITIALIZED,
+  function () {
 
-}
+    status.textContent =
+    "🔴 LIVE TERHUBUNG";
 
+    video.play().catch(function () {
 
-if (Hls.isSupported()) {
+      status.textContent =
+      "LIVE siap — tekan PLAY";
 
-  const hls =
-    new Hls({
+    });
 
-      enableWorker: true,
+  }
+);
 
-      lowLatencyMode: true,
+player.on(
+  dashjs.MediaPlayer.events.ERROR,
+  function (error) {
 
-      liveSyncDurationCount: 3,
+    console.log(
+      "DASH ERROR:",
+      error
+    );
 
-      liveMaxLatencyDurationCount: 6,
+    status.textContent =
+    "Gagal memuat LIVE";
 
-      maxBufferLength: 15,
+  }
+);
 
-      backBufferLength: 5,
+</script>
 
-      manifestLoadingMaxRetry: 10,
-
+</body>
+</html>
       levelLoadingMaxRetry: 10,
 
       fragLoadingMaxRetry: 10
