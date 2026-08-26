@@ -1,5 +1,5 @@
 const SOURCE =
-  "https://hugh.cdn.rumble.cloud/live/3fms19g4/live-hls/sqg5-axz7/chunklist_i0_DVR.m3u8";
+  "http://gvisiontv.channell.my.id/ch/th/th1.php/.mpd?=29";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
