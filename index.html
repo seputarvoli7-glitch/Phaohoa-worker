@@ -1,12 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>HLS Player</title>
+<title>Live Player</title>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
 
 <style>
 html, body {
@@ -21,6 +22,7 @@ video {
     width: 100%;
     height: 100%;
     background: #000;
+    display: block;
 }
 </style>
 </head>
@@ -33,36 +35,177 @@ video {
 
 const video = document.getElementById("video");
 
-const stream =
+/*
+========================================
+PILIH STREAM
+========================================
+
+HLS  = Rumble
+DASH = Gvision
+*/
+
+const TYPE = "DASH";
+
+
+/*
+========================================
+RUMBLE HLS
+========================================
+*/
+
+const HLS_URL =
 "https://phaohoa-worker.seputarvoli7.workers.dev/?url=https%3A%2F%2Fhugh.cdn.rumble.cloud%2Flive%2F3fms19g4%2Flive-hls%2Fsqg5-axz7%2Fchunklist_i0_DVR.m3u8";
 
-if (Hls.isSupported()) {
 
-    const hls = new Hls();
+/*
+========================================
+GVISION DASH
+========================================
+*/
 
-    hls.loadSource(stream);
+const DASH_URL =
+"https://gvision-dash.seputarvoli7.workers.dev/";
+
+
+/*
+========================================
+HLS
+========================================
+*/
+
+function startHLS() {
+
+    if (!Hls.isSupported()) {
+
+        if (
+            video.canPlayType(
+                "application/vnd.apple.mpegurl"
+            )
+        ) {
+
+            video.src = HLS_URL;
+            video.play().catch(() => {});
+
+        }
+
+        return;
+    }
+
+    const hls = new Hls({
+        liveSyncDurationCount: 2,
+        liveMaxLatencyDurationCount: 5,
+        startPosition: -1
+    });
+
+    hls.loadSource(HLS_URL);
 
     hls.attachMedia(video);
 
-    hls.on(Hls.Events.MANIFEST_PARSED, function () {
+    hls.on(
+        Hls.Events.MANIFEST_PARSED,
+        function () {
 
-        video.play().catch(function(error) {
-            console.log(error);
-        });
+            video.play().catch(() => {});
 
+        }
+    );
+
+    hls.on(
+        Hls.Events.ERROR,
+        function (event, data) {
+
+            console.log("HLS ERROR:", data);
+
+            if (data.fatal) {
+
+                if (
+                    data.type ===
+                    Hls.ErrorTypes.NETWORK_ERROR
+                ) {
+
+                    hls.startLoad();
+
+                }
+
+                else if (
+                    data.type ===
+                    Hls.ErrorTypes.MEDIA_ERROR
+                ) {
+
+                    hls.recoverMediaError();
+
+                }
+
+            }
+
+        }
+    );
+}
+
+
+/*
+========================================
+DASH
+========================================
+*/
+
+function startDASH() {
+
+    const player =
+        dashjs.MediaPlayer().create();
+
+    player.initialize(
+        video,
+        DASH_URL,
+        true
+    );
+
+    player.updateSettings({
+        streaming: {
+            liveCatchup: {
+                enabled: true
+            }
+        }
     });
 
-    hls.on(Hls.Events.ERROR, function(event, data) {
+    player.on(
+        dashjs.MediaPlayer.events.STREAM_INITIALIZED,
+        function () {
 
-        console.log("HLS ERROR:", data);
+            video.play().catch(() => {});
 
-    });
+        }
+    );
+
+    player.on(
+        dashjs.MediaPlayer.events.ERROR,
+        function (error) {
+
+            console.log(
+                "DASH ERROR:",
+                error
+            );
+
+        }
+    );
+}
+
+
+/*
+========================================
+JALANKAN
+========================================
+*/
+
+if (TYPE === "HLS") {
+
+    startHLS();
 
 }
 
-else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+else if (TYPE === "DASH") {
 
-    video.src = stream;
+    startDASH();
 
 }
 
