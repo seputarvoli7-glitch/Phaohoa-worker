@@ -1,73 +1,287 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Live Volleyball</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<title>Live Player</title>
 
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-      width: 100%;
-      height: 100%;
-    }
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
 
-    video {
-      width: 100%;
-      height: 100%;
-      background: #000;
-      display: block;
-    }
-  </style>
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+video {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    display: block;
+}
+
+#status {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    z-index: 10;
+    color: white;
+    background: rgba(0,0,0,.7);
+    padding: 8px;
+    font-family: Arial;
+    font-size: 14px;
+    border-radius: 5px;
+}
+</style>
 </head>
 
 <body>
 
-<video id="video" controls autoplay playsinline></video>
+<div id="status">Memuat player...</div>
+
+<video
+    id="video"
+    controls
+    autoplay
+    playsinline>
+</video>
 
 <script>
+
 const video = document.getElementById("video");
+const status = document.getElementById("status");
 
-const stream =
-  "https://phaohoa-worker.seputarvoli7.workers.dev/";
+/*
+=================================================
+PILIH SUMBER DI SINI
+=================================================
+*/
 
-if (Hls.isSupported()) {
+// HLS Rumble melalui Worker
+const HLS_URL =
+"https://phaohoa-worker.seputarvoli7.workers.dev/";
 
-  const hls = new Hls({
-    enableWorker: true,
-    lowLatencyMode: false,
-    liveSyncDurationCount: 3,
-    liveMaxLatencyDurationCount: 10
-  });
+// DASH .MPD
+const DASH_URL =
+"http://gvisiontv.channell.my.id/ch/th/th1.php/.mpd?=29";
 
-  hls.loadSource(stream);
-  hls.attachMedia(video);
 
-  hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    video.play().catch(() => {});
-  });
+/*
+=================================================
+UBAH NILAI INI
+=================================================
 
-  hls.on(Hls.Events.ERROR, (event, data) => {
-    console.log("HLS ERROR:", data);
+"HLS"  = memainkan Rumble
+"DASH" = memainkan MPD
+*/
 
-    if (data.fatal) {
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-        hls.startLoad();
-      } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-        hls.recoverMediaError();
-      }
+const TYPE = "HLS";
+
+
+function setStatus(text) {
+    status.textContent = text;
+}
+
+
+/*
+=================================================
+HLS PLAYER
+=================================================
+*/
+
+function playHLS(url) {
+
+    setStatus("HLS aktif...");
+
+    if (Hls.isSupported()) {
+
+        const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: false,
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 10
+        });
+
+        hls.loadSource(url);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, function () {
+
+            setStatus("HLS siap");
+
+            video.play().catch(() => {});
+
+        });
+
+        hls.on(Hls.Events.ERROR, function(event, data) {
+
+            console.log("HLS ERROR:", data);
+
+            if (data.fatal) {
+
+                if (
+                    data.type ===
+                    Hls.ErrorTypes.NETWORK_ERROR
+                ) {
+
+                    setStatus("HLS network error - mencoba lagi...");
+
+                    hls.startLoad();
+
+                }
+
+                else if (
+                    data.type ===
+                    Hls.ErrorTypes.MEDIA_ERROR
+                ) {
+
+                    setStatus("HLS media error - recovery...");
+
+                    hls.recoverMediaError();
+
+                }
+
+                else {
+
+                    setStatus("HLS gagal diputar");
+
+                    hls.destroy();
+
+                }
+
+            }
+
+        });
+
     }
-  });
 
-} else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    else if (
+        video.canPlayType(
+            "application/vnd.apple.mpegurl"
+        )
+    ) {
 
-  video.src = stream;
+        video.src = url;
+
+        video.addEventListener(
+            "loadedmetadata",
+            function () {
+
+                setStatus("HLS siap");
+
+                video.play().catch(() => {});
+
+            }
+        );
+
+    }
+
+    else {
+
+        setStatus("Browser tidak mendukung HLS");
+
+    }
 
 }
+
+
+/*
+=================================================
+DASH PLAYER
+=================================================
+*/
+
+function playDASH(url) {
+
+    setStatus("DASH aktif...");
+
+    if (
+        typeof dashjs === "undefined"
+    ) {
+
+        setStatus("dash.js gagal dimuat");
+
+        return;
+
+    }
+
+    const player =
+        dashjs.MediaPlayer().create();
+
+    player.initialize(
+        video,
+        url,
+        true
+    );
+
+    player.on(
+        dashjs.MediaPlayer.events.STREAM_INITIALIZED,
+        function () {
+
+            setStatus("DASH siap");
+
+            video.play().catch(() => {});
+
+        }
+    );
+
+    player.on(
+        dashjs.MediaPlayer.events.ERROR,
+        function (error) {
+
+            console.log(
+                "DASH ERROR:",
+                error
+            );
+
+            setStatus(
+                "DASH gagal memuat stream"
+            );
+
+        }
+    );
+
+}
+
+
+/*
+=================================================
+JALANKAN PLAYER
+=================================================
+*/
+
+if (TYPE === "HLS") {
+
+    playHLS(HLS_URL);
+
+}
+
+else if (TYPE === "DASH") {
+
+    playDASH(DASH_URL);
+
+}
+
+else {
+
+    setStatus(
+        "TYPE harus HLS atau DASH"
+    );
+
+}
+
 </script>
 
 </body>
