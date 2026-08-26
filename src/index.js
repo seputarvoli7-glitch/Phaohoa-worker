@@ -1,10 +1,11 @@
-const SOURCE =
-  "https://rumble.com/live-hls-dvr/9eS2GvvIz54/playlist.m3u8";
+const ALLOWED_HOST = "hugh.cdn.rumble.cloud";
 
-const CORS = {
+const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-  "Access-Control-Allow-Headers": "*"
+  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Expose-Headers": "*",
+  "Cache-Control": "no-store"
 };
 
 export default {
@@ -13,27 +14,48 @@ export default {
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
-        headers: CORS
+        headers: CORS_HEADERS
       });
     }
 
-    if (request.method !== "GET" &&
-        request.method !== "HEAD") {
+    if (!["GET", "HEAD"].includes(request.method)) {
       return new Response("Method Not Allowed", {
         status: 405,
-        headers: CORS
+        headers: CORS_HEADERS
       });
     }
+
+    const url = new URL(request.url);
+
+    // URL sumber Rumble CDN
+    const source =
+      "https://hugh.cdn.rumble.cloud" +
+      url.pathname +
+      url.search;
 
     try {
 
-      const response = await fetch(SOURCE, {
+      const sourceURL = new URL(source);
+
+      if (sourceURL.hostname !== ALLOWED_HOST) {
+        return new Response("Host not allowed", {
+          status: 403,
+          headers: CORS_HEADERS
+        });
+      }
+
+      const response = await fetch(sourceURL, {
         method: request.method,
+        redirect: "follow",
         headers: {
           "User-Agent": "Mozilla/5.0",
-          "Accept": "*/*"
+          "Accept": "*/*",
+          "Referer": "https://rumble.com/"
         },
-        redirect: "follow"
+        cf: {
+          cacheTtl: 0,
+          cacheEverything: false
+        }
       });
 
       const headers =
@@ -50,6 +72,11 @@ export default {
       );
 
       headers.set(
+        "Access-Control-Allow-Headers",
+        "*"
+      );
+
+      headers.set(
         "Cache-Control",
         "no-store"
       );
@@ -58,6 +85,7 @@ export default {
         response.body,
         {
           status: response.status,
+          statusText: response.statusText,
           headers
         }
       );
@@ -65,46 +93,16 @@ export default {
     } catch (error) {
 
       return new Response(
-        "Source error: " + error.message,
+        "Proxy Error: " + error.message,
         {
           status: 502,
-          headers: CORS
+          headers: CORS_HEADERS
         }
       );
 
     }
   }
-};        })
-      }
-    );
-  }
-};
-
-
-/*
- * Proxy playlist M3U8
- */
-
-async function proxyHLS(
-  request,
-  source,
-  workerOrigin
-) {
-
-  try {
-
-    const response = await fetch(
-      source,
-      {
-        method: request.method,
-
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0",
-          "Accept":
-            "application/vnd.apple.mpegurl,*/*",
-          "Referer":
-            "https://rumble.com/"
+};            "https://rumble.com/"
         },
 
         redirect: "follow",
