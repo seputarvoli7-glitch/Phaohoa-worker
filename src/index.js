@@ -1,10 +1,10 @@
-const ALLOWED_HOST = "hugh.cdn.rumble.cloud";
+const SOURCE =
+"https://hugh.cdn.rumble.cloud/live/e6pv21nm/live-hls/eu9x-oypl/chunklist_i0_DVR.m3u8";
 
-const CORS_HEADERS = {
+const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "*",
-  "Access-Control-Expose-Headers": "*",
   "Cache-Control": "no-store"
 };
 
@@ -14,39 +14,14 @@ export default {
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
-        headers: CORS_HEADERS
+        headers: CORS
       });
     }
-
-    if (!["GET", "HEAD"].includes(request.method)) {
-      return new Response("Method Not Allowed", {
-        status: 405,
-        headers: CORS_HEADERS
-      });
-    }
-
-    const url = new URL(request.url);
-
-    // URL sumber Rumble CDN
-    const source =
-      "https://hugh.cdn.rumble.cloud" +
-      url.pathname +
-      url.search;
 
     try {
 
-      const sourceURL = new URL(source);
-
-      if (sourceURL.hostname !== ALLOWED_HOST) {
-        return new Response("Host not allowed", {
-          status: 403,
-          headers: CORS_HEADERS
-        });
-      }
-
-      const response = await fetch(sourceURL, {
+      const response = await fetch(SOURCE, {
         method: request.method,
-        redirect: "follow",
         headers: {
           "User-Agent": "Mozilla/5.0",
           "Accept": "*/*",
@@ -58,53 +33,31 @@ export default {
         }
       });
 
-      const headers =
-        new Headers(response.headers);
+      const text =
+        await response.text();
 
-      headers.set(
-        "Access-Control-Allow-Origin",
-        "*"
-      );
-
-      headers.set(
-        "Access-Control-Allow-Methods",
-        "GET, HEAD, OPTIONS"
-      );
-
-      headers.set(
-        "Access-Control-Allow-Headers",
-        "*"
-      );
-
-      headers.set(
-        "Cache-Control",
-        "no-store"
-      );
-
-      return new Response(
-        response.body,
-        {
-          status: response.status,
-          statusText: response.statusText,
-          headers
+      return new Response(text, {
+        status: response.status,
+        headers: {
+          ...CORS,
+          "Content-Type":
+            "application/vnd.apple.mpegurl"
         }
-      );
+      });
 
     } catch (error) {
 
       return new Response(
-        "Proxy Error: " + error.message,
+        "ERROR: " + error.message,
         {
           status: 502,
-          headers: CORS_HEADERS
+          headers: CORS
         }
       );
 
     }
   }
-};            "https://rumble.com/"
-        },
-
+};
         redirect: "follow",
 
         cf: {
