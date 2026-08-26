@@ -1,5 +1,5 @@
 const SOURCE =
-"https://hugh.cdn.rumble.cloud/live/e6pv21nm/live-hls/eu9x-oypl/chunklist_i0_DVR.m3u8";
+"https://hugh.cdn.rumble.cloud/live/3fms19g4/live-hls/sqg5-axz7/chunklist_i0_DVR.m3u8";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
